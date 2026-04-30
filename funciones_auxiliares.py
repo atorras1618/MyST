@@ -13,17 +13,26 @@ def diccionario_simplices(st):
         dict_spx[simplex_dim].append(simplex)
     return dict_spx
 
+def característica_euler(st):
+    dict_spx = diccionario_simplices(st)
+    euler_chi = 0
+    for dim in range(st.dimension()+1):
+        euler_chi += ((-1)**dim) * len(dict_spx[dim])
+    return euler_chi
+
 def ver_simplices(st):
     dict_spx = diccionario_simplices(st)
     for dim in range(st.dimension()+1):
         print(f"Símplices en dimensión {dim}:")
         print(dict_spx[dim])
 
-def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alpha=0.5, with_labels=True, node_size=1000, font_size=16):
+
+
+def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alpha=0.5, with_labels=True, node_size=1000, font_size=16, seed=4):
     dict_spx = diccionario_simplices(st)
     G = nx.Graph(dict_spx[1])
     if pos is None:
-        pos = nx.spring_layout(G)
+        pos = nx.spring_layout(G, seed=seed)
     fig, ax = plt.subplots(figsize=figsize)
     triangles = []
     options = {
@@ -49,3 +58,4 @@ def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alph
         ax.add_collection(face_col) 
         
     nx.draw(G, pos=pos, **options)
+
