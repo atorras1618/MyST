@@ -1,9 +1,12 @@
-import matplotlib.pyplot as plt
-from matplotlib.collections import PolyCollection
-
 import networkx as nx
 import numpy as np
 import sympy as sp
+
+import matplotlib.pyplot as plt
+from matplotlib.collections import PolyCollection
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 
 def diccionario_simplices(st):
     dict_spx = {}
@@ -60,10 +63,13 @@ def diferenciales(st):
     
 ### Funciones de representación
 
-def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alpha=0.5, with_labels=True, node_size=1000, font_size=16, seed=4):
+def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alpha=0.5, with_labels=True, node_size=1000, font_size=16, seed=4, points=False):
     dict_spx = diccionario_simplices(st)
     G = nx.Graph(dict_spx[1])
-    if pos is None:
+    if points:
+        # pos must be the np array of points
+        pos = {i : pos[i] for i in range(pos.shape[0])}
+    elif pos is None:
         pos = nx.spring_layout(G, seed=seed)
     fig, ax = plt.subplots(figsize=figsize)
     triangles = []
@@ -90,4 +96,54 @@ def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alph
         ax.add_collection(face_col) 
         
     nx.draw(G, pos=pos, **options)
+    # Plotting options when plotting with points
+    if points:
+        plt.gca().axis("on")
+        plt.tick_params(bottom=True, left=True, labelbottom=True, labelleft=True, colors='black')
 
+
+def plot_simplex_tree_3D(st, points):
+    """ Función para visualizar un complejo simplicial:
+    st: complejo simplicial, estructura `simplex_tree`de Gudhi
+    points: puntos en formato numpy.array (numero de puntos, 3) 
+    """
+    # Vamos a extraer y agrupar las aristas y los triángulos a partir de st
+    edges = []
+    triangles = []
+    for simplex, _ in st.get_skeleton(2): # We only need up to 2D faces for 3D visualization
+        dim = len(simplex) - 1
+        if dim == 1:
+            edges.append(simplex)
+        elif dim == 2:
+            triangles.append(simplex)
+            
+    # Initialize the figure
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    # Plot all Vertices in one command
+    ax.scatter(points[:, 0], points[:, 1], points[:, 2], 
+                color='black', s=10, depthshade=True)
+    
+    # Plot all Edges in one command using Line3DCollection
+    if edges:
+        edge_coords = points[np.array(edges)] # Shape: (num_edges, 2, 3)
+        edge_collection = Line3DCollection(edge_coords, colors='black', linewidths=0.2, alpha=0.4)
+        ax.add_collection3d(edge_collection)
+    
+    # Plot all Triangles (Faces) in one command using Poly3DCollection
+    if triangles:
+        tri_coords = points[np.array(triangles)] 
+        # tomamos el centroide de cada triangulo
+        centroids = np.mean(tri_coords, axis=1) 
+        # tomamos las coordenadas z del centroide de cada triangulo
+        z_centers = centroids[:, 2] 
+        # normalizamos los centroides de 0 a 1 para el colormap
+        norm = mcolors.Normalize(vmin=z_centers.min(), vmax=z_centers.max())
+        # calculamos los colores de cada triangulo segun z_centers
+        face_colors = cm.plasma_r(norm(z_centers))
+        # 6. Pass the color array to facecolors
+        tri_collection = Poly3DCollection(tri_coords, facecolors=face_colors, edgecolors='none', alpha=0.2)
+        ax.add_collection3d(tri_collection)
+    # ---------------------- 
+    ax.set_box_aspect((np.ptp(points[:, 0]), np.ptp(points[:, 1]), np.ptp(points[:, 2])))
+    
