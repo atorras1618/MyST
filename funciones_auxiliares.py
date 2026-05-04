@@ -8,6 +8,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
+import gudhi
+
 def diccionario_simplices(st):
     dict_spx = {}
     for i in range(st.dimension()+1):
@@ -60,6 +62,27 @@ def diferenciales(st):
         lista_dif.append(sp.Matrix(diferencial.astype(int)))
     # for 
     return lista_dif
+
+### Height filtration from trimesh along a direction
+def height_filtration_from_mesh(mesh, direction=[1,1,1]):
+    vertex_heights = np.dot(mesh.vertices, direction)
+    # Get maximum of edges and triangles
+    edge_heights = np.max(vertex_heights[mesh.edges_unique], axis=1)
+    tri_heights = np.max(vertex_heights[mesh.faces], axis=1)
+    # Create simplex tree
+    st = gudhi.SimplexTree()
+    # Insert vertices with heights
+    gudhi_vertices = np.ascontiguousarray(np.arange(len(mesh.vertices)).reshape(1, -1), dtype=np.int32)
+    st.insert_batch(gudhi_vertices, vertex_heights)
+    # Edges (1-simplices): Shape (2, N)
+    gudhi_edges = np.ascontiguousarray(mesh.edges_unique.T, dtype=np.int32)
+    st.insert_batch(gudhi_edges, edge_heights)
+    # Triangles (2-simplices): Shape (3, N)
+    gudhi_triangles = np.ascontiguousarray(mesh.faces.T, dtype=np.int32)
+    st.insert_batch(gudhi_triangles, tri_heights)
+    # Final safety check to enforce mathematically valid filtration
+    st.make_filtration_non_decreasing()
+    return st
     
 ### Funciones de representación
 
@@ -102,47 +125,60 @@ def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alph
         plt.tick_params(bottom=True, left=True, labelbottom=True, labelleft=True, colors='black')
 
 
-def plot_simplex_tree_3D(st, points):
+def plot_simplex_tree_3D(st, points, alpha_faces=0.5, figsize=(5,5), use_filtration=True, ax=None):
     """ Función para visualizar un complejo simplicial:
     st: complejo simplicial, estructura `simplex_tree`de Gudhi
     points: puntos en formato numpy.array (numero de puntos, 3) 
     """
     # Vamos a extraer y agrupar las aristas y los triángulos a partir de st
+    vertices = []
     edges = []
     triangles = []
-    for simplex, _ in st.get_skeleton(2): # We only need up to 2D faces for 3D visualization
+    triangle_filtrations = []
+    for simplex, filtration in st.get_skeleton(2): # We only need up to 2D faces for 3D visualization
         dim = len(simplex) - 1
-        if dim == 1:
+        if dim == 0:
+            vertices.append(simplex[0])
+        elif dim == 1:
             edges.append(simplex)
         elif dim == 2:
             triangles.append(simplex)
+            triangle_filtrations.append(filtration)
             
-    # Initialize the figure
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
+    # Initialize the figure if axis not given
+    if ax is None:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111, projection='3d')
     # Plot all Vertices in one command
-    ax.scatter(points[:, 0], points[:, 1], points[:, 2], 
-                color='black', s=10, depthshade=True)
+    vtx_coords = points[vertices]
+    ax.scatter(vtx_coords[:, 0], vtx_coords[:, 1], vtx_coords[:, 2], 
+                color='black', s=10, depthshade=True, zorder=3)
     
     # Plot all Edges in one command using Line3DCollection
     if edges:
         edge_coords = points[np.array(edges)] # Shape: (num_edges, 2, 3)
-        edge_collection = Line3DCollection(edge_coords, colors='black', linewidths=0.2, alpha=0.4)
+        edge_collection = Line3DCollection(edge_coords, colors='black', linewidths=0.2, alpha=0.4, zorder=2)
         ax.add_collection3d(edge_collection)
     
     # Plot all Triangles (Faces) in one command using Poly3DCollection
     if triangles:
-        tri_coords = points[np.array(triangles)] 
-        # tomamos el centroide de cada triangulo
-        centroids = np.mean(tri_coords, axis=1) 
-        # tomamos las coordenadas z del centroide de cada triangulo
-        z_centers = centroids[:, 2] 
-        # normalizamos los centroides de 0 a 1 para el colormap
-        norm = mcolors.Normalize(vmin=z_centers.min(), vmax=z_centers.max())
-        # calculamos los colores de cada triangulo segun z_centers
-        face_colors = cm.plasma_r(norm(z_centers))
+        if use_filtration:
+            tri_coords = points[np.array(triangles)] 
+            filtrations_array = np.array(triangle_filtrations)
+            norm = mcolors.Normalize(vmin=filtrations_array.min(), vmax=filtrations_array.max())
+            face_colors = cm.plasma_r(norm(filtrations_array))
+        else:
+            tri_coords = points[np.array(triangles)] 
+            # tomamos el centroide de cada triangulo
+            centroids = np.mean(tri_coords, axis=1) 
+            # tomamos las coordenadas z del centroide de cada triangulo
+            z_centers = centroids[:, 2] 
+            # normalizamos los centroides de 0 a 1 para el colormap
+            norm = mcolors.Normalize(vmin=z_centers.min(), vmax=z_centers.max())
+            # calculamos los colores de cada triangulo segun z_centers
+            face_colors = cm.plasma_r(norm(z_centers))
         # 6. Pass the color array to facecolors
-        tri_collection = Poly3DCollection(tri_coords, facecolors=face_colors, edgecolors='none', alpha=0.2)
+        tri_collection = Poly3DCollection(tri_coords, facecolors=face_colors, edgecolors='none', alpha=alpha_faces, zorder=1)
         ax.add_collection3d(tri_collection)
     # ---------------------- 
     ax.set_box_aspect((np.ptp(points[:, 0]), np.ptp(points[:, 1]), np.ptp(points[:, 2])))
