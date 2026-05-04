@@ -6,3 +6,4 @@ Práctica 1: Homología Simplicial
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/atorras1618/MyST/blob/main/homologia_simplicial.ipynb)
 
 Práctica 2: Homología Persistente
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/atorras1618/MyST/blob/main/homologia_persistente.ipynb)

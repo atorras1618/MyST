@@ -72,15 +72,15 @@ def height_filtration_from_mesh(mesh, direction=[1,1,1]):
     # Create simplex tree
     st = gudhi.SimplexTree()
     # Insert vertices with heights
-    gudhi_vertices = np.ascontiguousarray(np.arange(len(mesh.vertices)).reshape(1, -1), dtype=np.int32)
-    st.insert_batch(gudhi_vertices, vertex_heights)
-    # Edges (1-simplices): Shape (2, N)
-    gudhi_edges = np.ascontiguousarray(mesh.edges_unique.T, dtype=np.int32)
-    st.insert_batch(gudhi_edges, edge_heights)
-    # Triangles (2-simplices): Shape (3, N)
-    gudhi_triangles = np.ascontiguousarray(mesh.faces.T, dtype=np.int32)
-    st.insert_batch(gudhi_triangles, tri_heights)
-    # Final safety check to enforce mathematically valid filtration
+    vertices = np.asarray(np.arange(len(mesh.vertices)).reshape(1, -1), dtype=np.int32)
+    st.insert_batch(vertices, vertex_heights)
+    # Insert edges
+    edges = np.array(mesh.edges_unique.T, dtype=np.int32)
+    st.insert_batch(edges, edge_heights)
+    # Insert triangles
+    triangles = np.array(mesh.faces.T, dtype=np.int32)
+    st.insert_batch(triangles, tri_heights)
+    # Final safety check
     st.make_filtration_non_decreasing()
     return st
     
@@ -125,7 +125,7 @@ def plot_simplex_tree_2D(st, pos=None, figsize=(6,6), facecolors='skyblue', alph
         plt.tick_params(bottom=True, left=True, labelbottom=True, labelleft=True, colors='black')
 
 
-def plot_simplex_tree_3D(st, points, alpha_faces=0.5, figsize=(5,5), use_filtration=True, ax=None):
+def plot_simplex_tree_3D(st, points, alpha_faces=0.5, figsize=(5,5), use_filtration=True, ax=None, plot_lower_star_generators=False):
     """ Función para visualizar un complejo simplicial:
     st: complejo simplicial, estructura `simplex_tree`de Gudhi
     points: puntos en formato numpy.array (numero de puntos, 3) 
@@ -152,7 +152,7 @@ def plot_simplex_tree_3D(st, points, alpha_faces=0.5, figsize=(5,5), use_filtrat
     # Plot all Vertices in one command
     vtx_coords = points[vertices]
     ax.scatter(vtx_coords[:, 0], vtx_coords[:, 1], vtx_coords[:, 2], 
-                color='black', s=10, depthshade=True, zorder=3)
+                color='black', s=10, zorder=3)
     
     # Plot all Edges in one command using Line3DCollection
     if edges:
@@ -180,6 +180,82 @@ def plot_simplex_tree_3D(st, points, alpha_faces=0.5, figsize=(5,5), use_filtrat
         # 6. Pass the color array to facecolors
         tri_collection = Poly3DCollection(tri_coords, facecolors=face_colors, edgecolors='none', alpha=alpha_faces, zorder=1)
         ax.add_collection3d(tri_collection)
+
+    # Plot lower star generators 
+    if plot_lower_star_generators:
+        # compute_persistence MUST be called before extracting generators in GUDHI
+        st.compute_persistence()
+        
+        
+        
+        # lower_star_persistence_generators returns (regular_pairs, essential_features)
+        regular_pairs, essential_features = st.lower_star_persistence_generators()
+        # Loop through dimensions using the returned regular pairs
+        for dim, pairs_in_dim in enumerate(regular_pairs):
+            if len(pairs_in_dim) == 0:
+                continue # Skip if there are no generators in this dimension
+                
+            # Extract birth and death vertex indices
+            birth_vertices = pairs_in_dim[:, 0]
+            death_vertices = pairs_in_dim[:, 1]
+
+            # Grab the specific color for this dimension using Set1
+            color = cm.Set1(dim)
+            
+            # Map indices to their respective 3D coordinates
+            birth_coords = points[birth_vertices]
+            death_coords = points[death_vertices]
+            
+            # Range over pairs
+            for i, (b_coord, d_coord) in enumerate(zip(birth_coords, death_coords)):
+                # Plot a line joining persistence pairs
+                ax.plot([b_coord[0], d_coord[0]], 
+                        [b_coord[1], d_coord[1]], 
+                        [b_coord[2], d_coord[2]], 
+                        color=color, linewidth=3, zorder=1000)
+
+                # Legends 
+                label_birth = f"Birth Dim {dim}" if i == 0 else "_nolegend_"
+                label_death = f'Death Dim {dim}' if i == 0 else "_nolegend_"
+                # Birth point
+                ax.plot([b_coord[0]], [b_coord[1]], [b_coord[2]], 
+                        marker='o', markersize=8, color=color, markeredgecolor='white', 
+                        linestyle='None', zorder=1001, label=label_birth)
+                
+                # Death point
+                ax.plot([d_coord[0]], [d_coord[1]], [d_coord[2]], 
+                        marker='X', markersize=8, color=color, markeredgecolor='white', 
+                        linestyle='None', zorder=1001, label=label_death)
+
+        # Loop through dimensions using the essential features
+        for dim, features_in_dim in enumerate(essential_features):
+            if len(features_in_dim) == 0:
+                continue # Skip if there are no generators in this dimension
+
+            # Grab the specific color for this dimension using Set1
+            color = cm.Set1(dim)
+        
+            # Map indices to their respective 3D coordinates
+            features_coords = points[features_in_dim]
+            
+            # Range over pairs
+            for i, coord in enumerate(features_coords):
+                label_feature = f"Feature Dim {dim}" if i == 0 else "_nolegend_"
+                # feature coord (plot)
+                ax.plot([b_coord[0]], [b_coord[1]], [b_coord[2]], 
+                        marker='s', markersize=8, color=color, markeredgecolor='white', 
+                        linestyle='None', zorder=1002, label=label_feature)
+                
+        # Optional: You can uncomment this to show a legend for the dimensions
+        # ax.legend(loc="upper right")
     # ---------------------- 
-    ax.set_box_aspect((np.ptp(points[:, 0]), np.ptp(points[:, 1]), np.ptp(points[:, 2])))
+    x_min, x_max = points[:, 0].min(), points[:, 0].max()
+    y_min, y_max = points[:, 1].min(), points[:, 1].max()
+    z_min, z_max = points[:, 2].min(), points[:, 2].max()
+    # 2. Force the 3D axis limits to frame the entire point cloud
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
+    ax.set_zlim([z_min, z_max])
+    # Set aspect proportional
+    ax.set_box_aspect((x_max - x_min, y_max - y_min, z_max - z_min))
     
