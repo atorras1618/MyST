@@ -258,4 +258,68 @@ def plot_simplex_tree_3D(st, points, alpha_faces=0.5, figsize=(5,5), use_filtrat
     ax.set_zlim([z_min, z_max])
     # Set aspect proportional
     ax.set_box_aspect((x_max - x_min, y_max - y_min, z_max - z_min))
+
+
+
+#### Left to right column Gaussian elimination
+
+from sympy import Matrix, eye
+
+def column_reduce_DV(D):
+    """
+    Reduces matrix D from left to right using column additions to obtain 
+    a matrix R with unique pivots, returning (R, V) such that R = D * V.
+    V is an upper triangular matrix representing the column operations.
+    """
+    # Work with the transpose to use row operations
+    # D = (R * V^-1) => D^T = (V^-1)^T * R^T
+    Dt = D.transpose()
+    num_rows, num_cols = Dt.shape
+    
+    # Initialize Vt as an identity matrix to track row operations on Dt
+    Vt = eye(num_rows)
+    
+    # Pivot row index tracking
+    pivot_row = 0
+    
+    # Iterate through columns of Dt (which correspond to rows of D)
+    for col in range(num_cols):
+        if pivot_row >= num_rows:
+            break
+            
+        # Find the first non-zero entry in the current column from the pivot_row down
+        pivot_index = -1
+        for r in range(pivot_row, num_rows):
+            if Dt[r, col] != 0:
+                pivot_index = r
+                break
+                
+        if pivot_index == -1:
+            # No pivot in this column, move to the next column
+            continue
+            
+        # Swap rows in Dt and Vt to bring the pivot to the current pivot_row
+        if pivot_index != pivot_row:
+            Dt.row_swap(pivot_row, pivot_index)
+            Vt.row_swap(pivot_row, pivot_index)
+            
+        # Eliminate entries below the pivot using only downward row additions
+        # (This ensures Vt remains lower triangular, so V remains upper triangular)
+        for r in range(pivot_row + 1, num_rows):
+            if Dt[r, col] != 0:
+                factor = Dt[r, col] / Dt[pivot_row, col]
+                Dt.row_op(r, lambda v, j: v - factor * Dt[pivot_row, j])
+                Vt.row_op(r, lambda v, j: v - factor * Vt[pivot_row, j])
+                
+        pivot_row += 1
+
+    # Transpose back to get the column results
+    R = Dt.transpose()
+    
+    # Since Vt tracked the operations: Dt_reduced = Vt * Dt_original
+    # Taking transpose: R = D * Vt^T
+    # Therefore, V = Vt^T
+    V = Vt.transpose()
+    
+    return R, V
     
